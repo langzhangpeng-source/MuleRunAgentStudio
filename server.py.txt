@@ -1,0 +1,85 @@
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+import os
+import base64
+from PIL import Image
+import io
+import uuid
+
+# 初始化Flask应用
+app = Flask(__name__)
+CORS(app)  # 允许跨域请求
+
+# 创建静态文件目录
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GENERATED_DIR = os.path.join(BASE_DIR, 'static', 'generated')
+os.makedirs(GENERATED_DIR, exist_ok=True)
+
+# 模拟AI生成逻辑（实际场景可替换为真实模型调用）
+def generate_agent_image(prompt: str, ref_image: str) -> str:
+    """
+    生成智能体图片
+    :param prompt: 创意描述
+    :param ref_image: 3D参考图（base64）
+    :return: 生成图片的路径
+    """
+    # 解码base64参考图
+    ref_data = base64.b64decode(ref_image.split(',')[1])
+    ref_img = Image.open(io.BytesIO(ref_data))
+    
+    # 模拟生成过程（实际场景替换为SD/ComfyUI等模型调用）
+    # 这里直接保存参考图作为生成结果（仅演示）
+    img_name = f"agent_{uuid.uuid4()}.png"
+    img_path = os.path.join(GENERATED_DIR, img_name)
+    
+    # 简单处理：添加文字水印
+    from PIL import ImageDraw, ImageFont
+    draw = ImageDraw.Draw(ref_img)
+    font = ImageFont.load_default(size=24)
+    draw.text((10, 10), prompt[:20] + '...', fill=(124, 58, 237), font=font)
+    
+    ref_img.save(img_path)
+    return f"/static/generated/{img_name}"
+
+# 生成接口
+@app.route('/generate', methods=['POST'])
+def generate():
+    try:
+        # 获取请求数据
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        ref = data.get('ref', '')
+        
+        if not prompt or not ref:
+            return jsonify({'success': False, 'error': '缺少参数'}), 400
+        
+        # 生成图片
+        img_path = generate_agent_image(prompt, ref)
+        
+        # 返回结果
+        return jsonify({
+            'success': True,
+            'image': img_path,
+            'prompt': prompt
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# 静态文件访问
+@app.route('/static/generated/<filename>')
+def serve_image(filename):
+    return send_file(os.path.join(GENERATED_DIR, filename))
+
+# 健康检查接口
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok', 'message': 'MuleRun Agent Studio 后端运行正常'})
+
+# 主函数
+if __name__ == '__main__':
+    app.run(
+        host='0.0.0.0',
+        port=5000,
+        debug=True  # 生产环境请设置为False
+    )
